@@ -1,35 +1,19 @@
-import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm';
-import { Booking } from './Booking';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm';
 
-
-export enum UserRole {
-CUSTOMER = 'customer',
-ADMIN = 'admin'
-}
-
-
-@Entity()
+@Entity('users')
 export class User {
-@PrimaryGeneratedColumn('uuid')
-id!: string;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
+  @Column({ unique: true })
+  username: string;
 
-@Column({ unique: true })
-email!: string;
+  @Column({ name: 'password_hash' })
+  passwordHash: string;
 
+  @Column({ default: 'admin' })
+  role: string;
 
-@Column()
-passwordHash!: string;
-
-
-@Column({ nullable: true })
-name?: string;
-
-
-@Column({ type: 'enum', enum: UserRole, default: UserRole.CUSTOMER })
-role!: UserRole;
-
-
-@OneToMany(() => Booking, (b) => b.user)
-bookings?: Booking[];
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date;
 }

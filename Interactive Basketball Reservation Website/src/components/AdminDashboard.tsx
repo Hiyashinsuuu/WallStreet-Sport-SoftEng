@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Calendar, Clock, User, Phone, Mail, CreditCard, LogOut, Trash2, CheckCircle, XCircle } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { Calendar, Clock, User, CreditCard, LogOut, Trash2, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { useState, useEffect } from 'react';
+import axios from 'axios';
+import { useBookings, useBookingStats, useUpdateBookingStatus, useDeleteBooking } from '../api/hooks';
 
 interface Booking {
   id: string;
@@ -24,6 +26,8 @@ interface AdminDashboardProps {
   onLogout: () => void;
 }
 
+const API_URL = 'http://localhost:4000';
+
 export function AdminDashboard({ onLogout }: AdminDashboardProps) {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [stats, setStats] = useState({
@@ -32,86 +36,89 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
     totalRevenue: 0,
     pendingBookings: 0
   });
+  const [loading, setLoading] = useState(true);
 
-  // Mock bookings data
-  useEffect(() => {
-    const mockBookings: Booking[] = [
-      {
-        id: 'BK001',
-        customerName: 'Juan Dela Cruz',
-        email: 'juan@email.com',
-        phone: '+63 917 123 4567',
-        date: '2024-09-15',
-        time: '8:00 AM - 10:00 AM',
-        duration: '2 hours',
-        paymentMethod: 'GCash',
-        totalAmount: 1000,
-        status: 'confirmed',
-        createdAt: '2024-09-10T10:30:00Z'
-      },
-      {
-        id: 'BK002',
-        customerName: 'Maria Santos',
-        email: 'maria@email.com',
-        phone: '+63 917 234 5678',
-        date: '2024-09-16',
-        time: '6:00 PM - 8:00 PM',
-        duration: '2 hours',
-        paymentMethod: 'Cash on Site',
-        totalAmount: 1300,
-        status: 'pending',
-        createdAt: '2024-09-11T14:15:00Z'
-      },
-      {
-        id: 'BK003',
-        customerName: 'Jose Rodriguez',
-        email: 'jose@email.com',
-        phone: '+63 917 345 6789',
-        date: '2024-09-17',
-        time: '10:00 AM - 12:00 PM',
-        duration: '2 hours',
-        paymentMethod: 'GCash',
-        totalAmount: 1000,
-        status: 'confirmed',
-        createdAt: '2024-09-12T09:45:00Z'
+  // Get auth token
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('adminToken');
+    return {
+      headers: {
+        Authorization: `Bearer ${token}`
       }
-    ];
+    };
+  };
 
-    setBookings(mockBookings);
-    
-    // Calculate stats
-    const today = new Date().toISOString().split('T')[0];
-    const todayCount = mockBookings.filter(b => b.date === today).length;
-    const totalRevenue = mockBookings
-      .filter(b => b.status === 'confirmed')
-      .reduce((sum, b) => sum + b.totalAmount, 0);
-    const pendingCount = mockBookings.filter(b => b.status === 'pending').length;
-
-    setStats({
-      totalBookings: mockBookings.length,
-      todayBookings: todayCount,
-      totalRevenue,
-      pendingBookings: pendingCount
-    });
+  // Fetch bookings and stats
+  useEffect(() => {
+    fetchData();
   }, []);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [bookingsRes, statsRes] = await Promise.all([
+        axios.get(`${API_URL}/api/bookings`, getAuthHeaders()),
+        axios.get(`${API_URL}/api/bookings/stats`, getAuthHeaders())
+      ]);
+
+      setBookings(bookingsRes.data);
+      setStats(statsRes.data);
+    } catch (err: any) {
+      console.error(err);
+      if (err.response?.status === 401) {
+        toast.error('Session expired. Please login again.');
+        handleLogout();
+      } else {
+        toast.error('Failed to fetch bookings');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('isAdminLoggedIn');
     localStorage.removeItem('adminSession');
+    localStorage.removeItem('adminToken');
     toast.success('Logged out successfully!');
     onLogout();
   };
 
-  const updateBookingStatus = (id: string, newStatus: 'confirmed' | 'cancelled') => {
-    setBookings(prev => prev.map(booking => 
-      booking.id === id ? { ...booking, status: newStatus } : booking
-    ));
-    toast.success(`Booking ${newStatus} successfully!`);
+  const updateBookingStatus = async (id: string, newStatus: 'confirmed' | 'cancelled') => {
+    try {
+      await axios.patch(
+        `${API_URL}/api/bookings/${id}/status`,
+        { status: newStatus },
+        getAuthHeaders()
+      );
+
+      // Update local state
+      setBookings(prev => prev.map(booking => 
+        booking.id === id ? { ...booking, status: newStatus } : booking
+      ));
+
+      toast.success(`Booking ${newStatus} successfully!`);
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Failed to update booking');
+    }
   };
 
-  const deleteBooking = (id: string) => {
-    setBookings(prev => prev.filter(booking => booking.id !== id));
-    toast.success('Booking deleted successfully!');
+  const deleteBooking = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this booking?')) return;
+
+    try {
+      await axios.delete(`${API_URL}/api/bookings/${id}`, getAuthHeaders());
+      
+      // Remove from local state
+      setBookings(prev => prev.filter(booking => booking.id !== id));
+      
+      toast.success('Booking deleted successfully!');
+      
+      // Refresh stats
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Failed to delete booking');
+    }
   };
 
   const formatCurrency = (amount: number) => {
@@ -129,6 +136,17 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
     });
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500 mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-black text-white p-6">
       {/* Header */}
@@ -142,7 +160,7 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
         <Button
           onClick={handleLogout}
           variant="outline"
-          className="border-red-500/30 text-red-400 hover:bg-red-500/10"
+          className="bg-red-500/30 border-red-500/30 text-white hover:bg-red-500/10 hover:text-white"
         >
           <LogOut className="w-4 h-4 mr-2" />
           Logout
@@ -203,92 +221,106 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
       {/* Bookings Table */}
       <Card className="bg-black/50 backdrop-blur-md border-purple-500/30">
         <CardHeader>
-          <CardTitle className="text-white">Recent Bookings</CardTitle>
+          <CardTitle className="text-white flex justify-between items-center">
+            <span>Recent Bookings</span>
+            <Button
+              onClick={fetchData}
+              variant="outline"
+              size="sm"
+              className="border-purple-500/30 bg-black border-gray-600 text-white hover:bg-gray-800"
+            >
+              Refresh
+            </Button>
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="text-gray-300">Booking ID</TableHead>
-                  <TableHead className="text-gray-300">Customer</TableHead>
-                  <TableHead className="text-gray-300">Date & Time</TableHead>
-                  <TableHead className="text-gray-300">Payment</TableHead>
-                  <TableHead className="text-gray-300">Amount</TableHead>
-                  <TableHead className="text-gray-300">Status</TableHead>
-                  <TableHead className="text-gray-300">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {bookings.map((booking) => (
-                  <TableRow key={booking.id}>
-                    <TableCell className="text-white font-mono">{booking.id}</TableCell>
-                    <TableCell>
-                      <div className="text-white">
-                        <div className="font-medium">{booking.customerName}</div>
-                        <div className="text-sm text-gray-400">{booking.email}</div>
-                        <div className="text-sm text-gray-400">{booking.phone}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-white">
-                        <div>{formatDate(booking.date)}</div>
-                        <div className="text-sm text-gray-400">{booking.time}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={booking.paymentMethod === 'GCash' ? 'default' : 'secondary'}>
-                        {booking.paymentMethod}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-white font-bold">
-                      {formatCurrency(booking.totalAmount)}
-                    </TableCell>
-                    <TableCell>
-                      <Badge 
-                        variant={
-                          booking.status === 'confirmed' ? 'default' :
-                          booking.status === 'pending' ? 'secondary' : 'destructive'
-                        }
-                      >
-                        {booking.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        {booking.status === 'pending' && (
-                          <Button
-                            size="sm"
-                            onClick={() => updateBookingStatus(booking.id, 'confirmed')}
-                            className="bg-green-600 hover:bg-green-700"
-                          >
-                            <CheckCircle className="w-4 h-4" />
-                          </Button>
-                        )}
-                        {booking.status !== 'cancelled' && (
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => updateBookingStatus(booking.id, 'cancelled')}
-                          >
-                            <XCircle className="w-4 h-4" />
-                          </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => deleteBooking(booking.id)}
-                          className="border-red-500/30 text-red-400 hover:bg-red-500/10"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
+          {bookings.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-gray-400">No bookings found</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-gray-300">Customer</TableHead>
+                    <TableHead className="text-gray-300">Date & Time</TableHead>
+                    <TableHead className="text-gray-300">Payment</TableHead>
+                    <TableHead className="text-gray-300">Amount</TableHead>
+                    <TableHead className="text-gray-300">Status</TableHead>
+                    <TableHead className="text-gray-300">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {bookings.map((booking) => (
+                    <TableRow key={booking.id}>
+                      <TableCell>
+                        <div className="text-white">
+                          <div className="font-medium">{booking.customerName}</div>
+                          <div className="text-sm text-gray-400">{booking.email}</div>
+                          <div className="text-sm text-gray-400">{booking.phone}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-white">
+                          <div>{formatDate(booking.date)}</div>
+                          <div className="text-sm text-gray-400">{booking.time}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={booking.paymentMethod === 'GCash' ? 'default' : 'secondary'}>
+                          {booking.paymentMethod}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-white font-bold">
+                        {formatCurrency(booking.totalAmount)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge 
+                          variant={
+                            booking.status === 'confirmed' ? 'default' :
+                            booking.status === 'pending' ? 'secondary' : 'destructive'
+                          }
+                        >
+                          {booking.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          {booking.status === 'pending' && (
+                            <Button
+                              size="sm"
+                              onClick={() => updateBookingStatus(booking.id, 'confirmed')}
+                              className="bg-green-600 hover:bg-green-700"
+                            >
+                              <CheckCircle className="w-4 h-4" />
+                            </Button>
+                          )}
+                          {booking.status !== 'cancelled' && (
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => updateBookingStatus(booking.id, 'cancelled')}
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => deleteBooking(booking.id)}
+                            className="border-red-500/30 text-red-400 hover:bg-red-500/10"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

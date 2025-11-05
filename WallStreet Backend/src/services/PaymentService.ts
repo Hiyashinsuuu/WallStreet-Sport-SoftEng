@@ -1,45 +1,107 @@
 import axios from 'axios';
-import { Transaction, PaymentStatus } from '../entities/Transaction';
 import { AppDataSource } from '../ormconfig';
-
+import { Transaction } from '../entities/Transaction';
+import { BookingService } from './BookingService';
 
 export class PaymentService {
-txRepo = AppDataSource.getRepository(Transaction);
+  private txRepo = AppDataSource.getRepository(Transaction);
+  private bookingService = new BookingService();
 
+  async initiateGcashPayment(bookingId: string, amount: number) {
+    const providerRef = `gcash_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-async initiateGcashPayment(bookingId: string, amount: number) {
-// Placeholder: call GCash API here
-// Build request payload per GCash docs (client must input keys as env vars)
-const providerRef = `gcash_${Date.now()}`;
+    const tx = this.txRepo.create({
+      booking: { id: bookingId } as any,
+      providerReference: providerRef,
+      status: 'initiated',
+      amount,
+      paymentMethod: 'gcash'
+    });
+    await this.txRepo.save(tx);
 
+    try {
+      if (process.env.GCASH_API_URL && process.env.GCASH_CLIENT_ID && process.env.GCASH_CLIENT_SECRET) {
+        const payload = {
+          amount,
+          reference: providerRef,
+          callback_url: `${process.env.BACKEND_URL || 'http://localhost:4000'}/api/payments/webhook`,
+          return_url: `${process.env.FRONTEND_URL}/payment-complete?tx=${tx.id}`
+        };
 
-const tx = this.txRepo.create({ booking: { id: bookingId } as any, provider: 'gcash', providerReference: providerRef, status: PaymentStatus.INITIATED });
-await this.txRepo.save(tx);
+        const tokenResp = await axios.post(`${process.env.GCASH_API_URL}/oauth/token`, {
+          client_id: process.env.GCASH_CLIENT_ID,
+          client_secret: process.env.GCASH_CLIENT_SECRET,
+          grant_type: 'client_credentials'
+        });
+        const accessToken = tokenResp.data.access_token;
 
+        const resp = await axios.post(
+          `${process.env.GCASH_API_URL}/payments/checkout`,
+          payload,
+          { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
+        );
 
-// You should call the real GCash endpoint. Here we return a simulated checkout URL
-return { transactionId: tx.id, checkoutUrl: `${process.env.FRONTEND_URL}/checkout?tx=${tx.id}` };
-}
+        const checkoutUrl = resp.data.checkout_url || resp.data.redirect_url;
+        
+        tx.checkoutUrl = checkoutUrl;
+        await this.txRepo.save(tx);
+        
+        return { transactionId: tx.id, checkoutUrl };
+      } else {
+        const checkoutUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/mock-checkout?tx=${tx.id}&ref=${providerRef}`;
+        tx.checkoutUrl = checkoutUrl;
+        await this.txRepo.save(tx);
+        
+        return { transactionId: tx.id, checkoutUrl };
+      }
+    } catch (err: any) {
+      tx.status = 'failed';
+      await this.txRepo.save(tx);
+      throw { status: 500, message: err.message || 'Payment initiation failed' };
+    }
+  }
 
+  async handleGcashWebhook(payload: any) {
+    const providerRef = payload.reference || payload.referenceId;
+    
+    const tx = await this.txRepo.findOne({ 
+      where: { providerReference: providerRef }, 
+      relations: ['booking'] 
+    });
+    
+    if (!tx) {
+      throw { status: 404, message: 'Transaction not found' };
+    }
 
-async handleGcashWebhook(payload: any) {
-// process webhook payload
-// verify signature if provided by GCash
-const providerRef = payload.reference;
-const tx = await this.txRepo.findOne({ where: { providerReference: providerRef }, relations: ['booking'] });
-if (!tx) throw { status: 404, message: 'Transaction not found' };
+    const paymentStatus = payload.status?.toLowerCase();
+    
+    if (paymentStatus === 'success' || paymentStatus === 'completed' || paymentStatus === 'paid') {
+      tx.status = 'success';
+      tx.gcashTransactionId = payload.transactionId || payload.gcash_transaction_id;
+      tx.paymentDate = new Date();
+      await this.txRepo.save(tx);
 
+      if (tx.booking?.id) {
+        await this.bookingService.confirmBooking(tx.booking.id);
+      }
+    } else if (paymentStatus === 'failed' || paymentStatus === 'cancelled') {
+      tx.status = 'failed';
+      await this.txRepo.save(tx);
+    }
 
-if (payload.status === 'success') {
-tx.status = PaymentStatus.SUCCESS;
-await this.txRepo.save(tx);
-// confirm booking
-const bookingService = new (require('./BookingService').BookingService)();
-await bookingService.confirmBooking(tx.booking.id);
-} else {
-tx.status = PaymentStatus.FAILED;
-await this.txRepo.save(tx);
-}
-return tx;
-}
+    return tx;
+  }
+
+  async getTransactionById(id: string) {
+    const tx = await this.txRepo.findOne({
+      where: { id },
+      relations: ['booking']
+    });
+    
+    if (!tx) {
+      throw { status: 404, message: 'Transaction not found' };
+    }
+    
+    return tx;
+  }
 }

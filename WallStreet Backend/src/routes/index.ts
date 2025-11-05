@@ -1,10 +1,18 @@
-import { Router } from "express";
-import { adminLogin } from "../controllers/admin.controller";
-import { createBooking } from "../controllers/booking.controller";
+import { Router } from 'express';
+import authRoutes from './auth.routes';
+import bookingRoutes from './booking.routes';
+import paymentRoutes from './payment.routes';
+import receiptRoutes from './receipt.routes';
 
 const router = Router();
 
-router.post("/admin/login", adminLogin);
-router.post("/bookings", createBooking);
+router.use('/auth', authRoutes);
+router.use('/bookings', bookingRoutes);
+router.use('/payments', paymentRoutes);
+router.use('/receipts', receiptRoutes);
+
+router.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
 
 export default router;

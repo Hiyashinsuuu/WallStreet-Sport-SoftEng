@@ -2,39 +2,76 @@ import 'dotenv/config';
 import 'reflect-metadata';
 import express from 'express';
 import cors from 'cors';
-import router from './routes';
+import routes from './routes';
 import { AppDataSource } from './ormconfig';
 import { errorHandler } from './middleware/errorHandler';
 import swaggerUi from 'swagger-ui-express';
 import swaggerJsdoc from 'swagger-jsdoc';
-import dotenv from 'dotenv';
-
-dotenv.config();
 
 const app = express();
-app.use(cors());
-app.use(express.json());
 
-const specs = swaggerJsdoc({
+// Middleware
+app.use(cors({
+  origin: ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:5173', process.env.FRONTEND_URL || 'http://localhost:3000'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Authorization']
+}));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+const swaggerOptions = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: 'WallStreet API',
-      version: '0.1.0',
-      description: 'Backend API for WallStreet booking system',
+      title: 'WallStreet Basketball Court Booking API',
+      version: '1.0.0',
+      description: 'Backend API for WallStreet Sport basketball court reservation system',
+      contact: {
+        name: 'API Support'
+      }
     },
+    servers: [
+      {
+        url: process.env.BACKEND_URL || 'http://localhost:4000',
+        description: 'Development server'
+      }
+    ],
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT'
+        }
+      }
+    }
   },
-  apis: ['./src/controllers/*.ts'], 
-});
-app.use('/docs', swaggerUi.serve, swaggerUi.setup(specs));
+  apis: ['./src/routes/*.ts', './src/controllers/*.ts']
+};
 
-app.use('/api', router);
+const swaggerSpec = swaggerJsdoc(swaggerOptions);
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.use('/api', routes);
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 4000;
 
 AppDataSource.initialize()
   .then(() => {
-    app.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
+    console.log('✅ Database connected successfully');
+    console.log('📦 TypeORM entities loaded');
+    
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on http://localhost:${PORT}`);
+      console.log(`📚 API Documentation: http://localhost:${PORT}/api/docs`);
+      console.log(`🏥 Health Check: http://localhost:${PORT}/api/health`);
+    });
   })
-  .catch((err) => console.error('❌ Database connection failed:', err));
+  .catch((err) => {
+    console.error('Database connection failed:', err);
+    process.exit(1);
+  });
+
+export default app;

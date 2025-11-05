@@ -1,35 +1,53 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
-import { User } from './User';
-import { Slot } from './Slot';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import { Transaction } from './Transaction';
 
-
-export enum BookingStatus {
-PENDING = 'pending',
-CONFIRMED = 'confirmed',
-CANCELLED = 'cancelled'
-}
-
-
-@Entity()
+@Entity('bookings')
 export class Booking {
-@PrimaryGeneratedColumn('uuid')
-id!: string;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
+  @Column({ unique: true, name: 'booking_reference' })
+  bookingReference: string;
 
-@ManyToOne(() => User, (u) => u.bookings)
-@JoinColumn()
-user!: User;
+  // Customer info
+  @Column({ name: 'customer_name' })
+  customerName: string;
 
+  @Column()
+  email: string;
 
-@ManyToOne(() => Slot, (s) => s.bookings)
-@JoinColumn()
-slot!: Slot;
+  @Column()
+  phone: string;
 
+  // Booking details
+  @Column({ type: 'date', name: 'booking_date' })
+  bookingDate: Date;
 
-@Column({ type: 'enum', enum: BookingStatus, default: BookingStatus.PENDING })
-status!: BookingStatus;
+  @Column({ name: 'time_slot' })
+  timeSlot: string;  // '08:00-09:00'
 
+  @Column({ name: 'display_time' })
+  displayTime: string;
 
-@Column({ nullable: true })
-notes?: string;
+  @Column('decimal', { precision: 10, scale: 2 })
+  rate: number;
+
+  @Column()
+  period: 'morning' | 'afternoon' | 'evening';
+
+  // Status
+  @Column({ default: 'pending' })
+  status: 'pending' | 'confirmed' | 'cancelled';
+
+  @Column({ type: 'text', nullable: true })
+  notes?: string;
+
+  @OneToMany(() => Transaction, transaction => transaction.booking)
+  transactions: Transaction[];
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt: Date;
 }

@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Card, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
-import { Lock, User, Eye, EyeOff } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { Lock, User, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { useLogin } from '../api/hooks';
 
 interface AdminLoginProps {
   isOpen: boolean;
@@ -19,40 +19,20 @@ export function AdminLogin({ isOpen, onClose, onLogin }: AdminLoginProps) {
     password: ''
   });
   const [showPassword, setShowPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
 
-  // Mock admin credentials
-  const ADMIN_CREDENTIALS = {
-    username: 'admin',
-    password: 'wallstreet2024'
-  };
+  const loginMutation = useLogin();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
-
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    if (
-      credentials.username === ADMIN_CREDENTIALS.username &&
-      credentials.password === ADMIN_CREDENTIALS.password
-    ) {
-      localStorage.setItem('isAdminLoggedIn', 'true');
-      localStorage.setItem('adminSession', JSON.stringify({
-        username: credentials.username,
-        loginTime: new Date().toISOString()
-      }));
-      
-      toast.success('Login successful! Welcome to admin dashboard.');
+    
+    try {
+      await loginMutation.mutateAsync(credentials);
       onLogin();
       onClose();
       setCredentials({ username: '', password: '' });
-    } else {
-      toast.error('Invalid credentials. Please try again.');
+    } catch (error) {
+      // Error handled by mutation
     }
-    
-    setIsLoading(false);
   };
 
   const handleClose = () => {
@@ -89,6 +69,7 @@ export function AdminLogin({ isOpen, onClose, onLogin }: AdminLoginProps) {
                     className="pl-10 bg-black/50 border-gray-600 text-white placeholder-gray-400 focus:border-pink-400"
                     placeholder="Enter admin username"
                     required
+                    disabled={loginMutation.isPending}
                   />
                 </div>
               </div>
@@ -105,11 +86,13 @@ export function AdminLogin({ isOpen, onClose, onLogin }: AdminLoginProps) {
                     className="pl-10 pr-10 bg-black/50 border-gray-600 text-white placeholder-gray-400 focus:border-pink-400"
                     placeholder="Enter admin password"
                     required
+                    disabled={loginMutation.isPending}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white"
+                    disabled={loginMutation.isPending}
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -121,29 +104,28 @@ export function AdminLogin({ isOpen, onClose, onLogin }: AdminLoginProps) {
                   type="button"
                   variant="outline"
                   onClick={handleClose}
-                  className="flex-1 border-gray-600 text-white hover:bg-gray-800"
-                  disabled={isLoading}
+                  className="flex-1 bg-black border-gray-600 text-white hover:bg-gray-800"
+                  disabled={loginMutation.isPending}
                 >
                   Cancel
                 </Button>
                 <Button
                   type="submit"
-                  className="flex-1 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-black"
-                  disabled={isLoading}
+                  className="flex-1 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700"
+                  disabled={loginMutation.isPending}
                 >
-                  {isLoading ? 'Logging in...' : 'Login'}
+                  {loginMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Logging in...
+                    </>
+                  ) : (
+                    'Login'
+                  )}
                 </Button>
               </div>
             </form>
 
-            {/* Demo Credentials Info */}
-            <div className="mt-6 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-              <p className="text-yellow-300 text-sm text-center">
-                <strong>Demo Credentials:</strong><br />
-                Username: admin<br />
-                Password: wallstreet2024
-              </p>
-            </div>
           </CardContent>
         </Card>
       </DialogContent>

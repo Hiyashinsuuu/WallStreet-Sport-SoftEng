@@ -6,16 +6,9 @@ import { Label } from './ui/label';
 import { Calendar } from './ui/calendar';
 import { Badge } from './ui/badge';
 import { Checkbox } from './ui/checkbox';
-import { Clock, Check, X, CalendarIcon } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
-
-interface TimeSlot {
-  time: string;
-  displayTime: string;
-  rate: number;
-  available: boolean;
-  period: 'morning' | 'evening';
-}
+import { Clock, Check, CalendarIcon, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { useAvailableSlots, useInitiatePayment, TimeSlot } from '../api/hooks';
 
 interface BookingForm {
   name: string;
@@ -37,27 +30,16 @@ export function BookingSection() {
     timeSlot: null,
     agreedToTerms: false
   });
+  const [bookingReference, setBookingReference] = useState('');
 
-  const timeSlots: TimeSlot[] = [
-    { time: '08:00-09:00', displayTime: '8:00 AM - 9:00 AM', rate: 500, available: true, period: 'morning' },
-    { time: '09:00-10:00', displayTime: '9:00 AM - 10:00 AM', rate: 500, available: true, period: 'morning' },
-    { time: '10:00-11:00', displayTime: '10:00 AM - 11:00 AM', rate: 500, available: false, period: 'morning' },
-    { time: '11:00-12:00', displayTime: '11:00 AM - 12:00 PM', rate: 500, available: true, period: 'morning' },
-    { time: '12:00-13:00', displayTime: '12:00 PM - 1:00 PM', rate: 500, available: false, period: 'morning' },
-    { time: '13:00-14:00', displayTime: '1:00 PM - 2:00 PM', rate: 500, available: true, period: 'morning' },
-    { time: '14:00-15:00', displayTime: '2:00 PM - 3:00 PM', rate: 500, available: true, period: 'morning' },
-    { time: '15:00-16:00', displayTime: '3:00 PM - 4:00 PM', rate: 500, available: true, period: 'morning' },
-    { time: '17:00-18:00', displayTime: '5:00 PM - 6:00 PM', rate: 650, available: true, period: 'evening' },
-    { time: '18:00-19:00', displayTime: '6:00 PM - 7:00 PM', rate: 650, available: false, period: 'evening' },
-    { time: '19:00-20:00', displayTime: '7:00 PM - 8:00 PM', rate: 650, available: true, period: 'evening' },
-    { time: '20:00-21:00', displayTime: '8:00 PM - 9:00 PM', rate: 650, available: true, period: 'evening' },
-    { time: '21:00-22:00', displayTime: '9:00 PM - 10:00 PM', rate: 650, available: true, period: 'evening' },
-    { time: '22:00-23:00', displayTime: '10:00 PM - 11:00 PM', rate: 650, available: true, period: 'evening' },
-  ];
+  // TanStack Query Hooks
+  const dateStr = selectedDate?.toISOString().split('T')[0];
+  const { data: timeSlots = [], isLoading: loadingSlots, error: slotsError } = useAvailableSlots(dateStr);
+  const initiatePayment = useInitiatePayment();
 
   const handleDateSelect = (date: Date | undefined) => {
     setSelectedDate(date);
-    setBookingForm(prev => ({ ...prev, date }));
+    setBookingForm(prev => ({ ...prev, date, timeSlot: null }));
   };
 
   const handleTimeSlotSelect = (slot: TimeSlot) => {
@@ -73,12 +55,31 @@ export function BookingSection() {
     setCurrentStep('confirmation');
   };
 
-  const handleConfirmBooking = () => {
-    // Simulate booking confirmation
-    toast.success('Booking confirmed! Redirecting to payment...');
-    setTimeout(() => {
+  const handleConfirmBooking = async () => {
+    const amount = bookingForm.timeSlot?.rate || 0;
+
+    try {
+      const result = await initiatePayment.mutateAsync({
+        amount,
+        booking: {
+          name: bookingForm.name,
+          email: bookingForm.email,
+          contact: bookingForm.contact,
+          date: bookingForm.date!.toISOString().split('T')[0],
+          timeSlot: {
+            time: bookingForm.timeSlot!.time,
+            displayTime: bookingForm.timeSlot!.displayTime,
+            rate: bookingForm.timeSlot!.rate,
+            period: bookingForm.timeSlot!.period
+          }
+        }
+      });
+
+      setBookingReference(result.bookingReference);
       setCurrentStep('receipt');
-    }, 2000);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const formatDate = (date: Date | undefined) => {
@@ -88,10 +89,6 @@ export function BookingSection() {
       day: 'numeric', 
       year: 'numeric' 
     });
-  };
-
-  const generateBookingRef = () => {
-    return `WS-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
   };
 
   return (
@@ -119,8 +116,6 @@ export function BookingSection() {
             Reserve your slot in 3 easy steps.
           </p>
         </div>
-
-
 
         {/* Step Indicators */}
         <div className="flex justify-center mb-12">
@@ -206,7 +201,7 @@ export function BookingSection() {
         <div className="max-w-6xl mx-auto">
           {currentStep === 'calendar' && (
             <div className="grid grid-cols-1 lg:grid-cols-[1fr,2fr] gap-6">
-              {/* Calendar - Full Width */}
+              {/* Calendar */}
               <Card className="bg-black/50 backdrop-blur-md border-purple-500/30">
                 <CardHeader className="pb-4">
                   <CardTitle className="text-white flex items-center gap-2">
@@ -219,13 +214,13 @@ export function BookingSection() {
                     mode="single"
                     selected={selectedDate}
                     onSelect={handleDateSelect}
-                    disabled={(date) => date < new Date() || date < new Date("1900-01-01")}
+                    disabled={(date: Date) => date < new Date()}
                     className="w-full rounded-md border border-purple-500/30 bg-black/30 text-white"
                   />
                 </CardContent>
               </Card>
 
-              {/* Time Slots - Expanded Right Side */}
+              {/* Time Slots */}
               <Card className="bg-black/50 backdrop-blur-md border-purple-500/30">
                 <CardHeader className="pb-4">
                   <CardTitle className="text-white flex items-center gap-2">
@@ -234,7 +229,21 @@ export function BookingSection() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {selectedDate ? (
+                  {!selectedDate ? (
+                    <div className="text-center py-12">
+                      <CalendarIcon className="w-12 h-12 text-gray-600 mx-auto mb-4" />
+                      <p className="text-gray-400">Please select a date first</p>
+                    </div>
+                  ) : loadingSlots ? (
+                    <div className="text-center py-12">
+                      <Loader2 className="w-12 h-12 text-pink-400 mx-auto mb-4 animate-spin" />
+                      <p className="text-gray-400">Loading available slots...</p>
+                    </div>
+                  ) : slotsError ? (
+                    <div className="text-center py-12">
+                      <p className="text-red-400">Failed to load slots. Please try again.</p>
+                    </div>
+                  ) : (
                     <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
                       {timeSlots.map((slot) => (
                         <button
@@ -255,8 +264,17 @@ export function BookingSection() {
                               <div className="text-xs text-gray-400">PHP {slot.rate}/hour</div>
                             </div>
                             <div className="flex items-center gap-2">
-                              <Badge variant={slot.period === 'evening' ? 'destructive' : 'secondary'} className="text-xs">
-                                {slot.period === 'evening' ? 'Premium' : 'Standard'}
+                              <Badge 
+                                variant={
+                                  slot.period === 'evening' ? 'destructive' : 
+                                  slot.period === 'afternoon' ? 'default' : 
+                                  'secondary'
+                                } 
+                                className="text-xs"
+                              >
+                                {slot.period === 'evening' ? 'Premium' : 
+                                slot.period === 'afternoon' ? 'Standard' : 
+                                'Standard'}
                               </Badge>
                               {slot.available ? (
                                 <span className="text-green-400 text-xs">Available</span>
@@ -267,11 +285,6 @@ export function BookingSection() {
                           </div>
                         </button>
                       ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-12">
-                      <CalendarIcon className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-                      <p className="text-gray-400">Please select a date first</p>
                     </div>
                   )}
                 </CardContent>
@@ -342,10 +355,10 @@ export function BookingSection() {
                   <Checkbox
                     id="terms"
                     checked={bookingForm.agreedToTerms}
-                    onCheckedChange={(checked) => setBookingForm(prev => ({ ...prev, agreedToTerms: checked as boolean }))}
+                    onCheckedChange={(checked: boolean | "indeterminate") => setBookingForm(prev => ({ ...prev, agreedToTerms: checked as boolean }))}
                   />
                   <Label htmlFor="terms" className="text-white text-sm">
-                    By proceeding, I confirm that I have read and accepted the Terms and Conditions of WallStreet Sport.
+                    I agree to the Terms and Conditions of WallStreet Sport.
                   </Label>
                 </div>
 
@@ -353,7 +366,7 @@ export function BookingSection() {
                   <Button
                     onClick={() => setCurrentStep('calendar')}
                     variant="outline"
-                    className="flex-1 border-gray-600 text-white hover:bg-gray-800"
+                    className="flex-1 bg-black text-white hover:bg-gray-800"
                   >
                     Back
                   </Button>
@@ -371,8 +384,7 @@ export function BookingSection() {
           {currentStep === 'confirmation' && (
             <Card className="bg-black/50 backdrop-blur-md border-purple-500/30 max-w-2xl mx-auto">
               <CardHeader>
-                <CardTitle className="text-white text-center">Your Slot Is Almost Locked In</CardTitle>
-                <p className="text-gray-300 text-center">Here are the details of your reservation. Please review before confirming.</p>
+                <CardTitle className="text-white text-center">Confirm Your Booking</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="bg-purple-900/30 p-6 rounded-lg border border-purple-500/30">
@@ -408,15 +420,24 @@ export function BookingSection() {
                   <Button
                     onClick={() => setCurrentStep('form')}
                     variant="outline"
-                    className="flex-1 border-gray-600 text-white hover:bg-gray-800"
+                    className="flex-1 bg-black border-gray-600 text-white hover:bg-gray-800"
+                    disabled={initiatePayment.isPending}
                   >
-                    Cancel Reservation
+                    Back
                   </Button>
                   <Button
                     onClick={handleConfirmBooking}
                     className="flex-1 bg-gradient-to-r from-green-500 to-blue-600 hover:from-green-600 hover:to-blue-700"
+                    disabled={initiatePayment.isPending}
                   >
-                    Confirm & Pay via GCash
+                    {initiatePayment.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      'Confirm & Pay via GCash'
+                    )}
                   </Button>
                 </div>
               </CardContent>
@@ -428,13 +449,17 @@ export function BookingSection() {
               <CardHeader>
                 <CardTitle className="text-green-400 text-center flex items-center justify-center gap-2">
                   <Check className="w-6 h-6" />
-                  Payment Successful — You're In!
+                  Booking Confirmed!
                 </CardTitle>
-                <p className="text-gray-300 text-center">Your slot has been confirmed. Please keep this receipt for reference.</p>
+                <p className="text-gray-300 text-center">Your payment is being processed. Reference: {bookingReference}</p>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="bg-green-900/20 p-6 rounded-lg border border-green-500/30">
                   <div className="grid gap-4">
+                    <div className="flex justify-between">
+                      <span className="text-gray-300">Booking Reference:</span>
+                      <span className="text-pink-400 font-bold">{bookingReference}</span>
+                    </div>
                     <div className="flex justify-between">
                       <span className="text-gray-300">Date:</span>
                       <span className="text-white font-bold">{formatDate(bookingForm.date)}</span>
@@ -444,40 +469,10 @@ export function BookingSection() {
                       <span className="text-white font-bold">{bookingForm.timeSlot?.displayTime}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-300">Name:</span>
-                      <span className="text-white font-bold">{bookingForm.name}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-300">Total Rate:</span>
-                      <span className="text-white font-bold">PHP {bookingForm.timeSlot?.rate}/hour</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-300">Amount Paid (Downpayment):</span>
-                      <span className="text-green-400 font-bold">PHP {Math.floor((bookingForm.timeSlot?.rate || 0) / 2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-300">Remaining Balance:</span>
-                      <span className="text-yellow-400 font-bold">PHP {Math.ceil((bookingForm.timeSlot?.rate || 0) / 2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-300">Booking Reference #:</span>
-                      <span className="text-pink-400 font-bold">{generateBookingRef()}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-300">GCash Transaction ID:</span>
-                      <span className="text-blue-400 font-bold">GC{Math.random().toString().substr(2, 10)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-300">Payment Date/Time:</span>
-                      <span className="text-white font-bold">{new Date().toLocaleString()}</span>
+                      <span className="text-gray-300">Amount:</span>
+                      <span className="text-green-400 font-bold">PHP {bookingForm.timeSlot?.rate}</span>
                     </div>
                   </div>
-                </div>
-
-                <div className="bg-yellow-900/20 p-4 rounded-lg border border-yellow-500/30">
-                  <p className="text-yellow-300 text-sm text-center">
-                    Show this receipt upon arrival at WallStreet Sport to verify your booking. First to pay always gets the slot.
-                  </p>
                 </div>
 
                 <Button
@@ -495,7 +490,7 @@ export function BookingSection() {
                   }}
                   className="w-full bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700"
                 >
-                  Back to Home
+                  Book Another Slot
                 </Button>
               </CardContent>
             </Card>
