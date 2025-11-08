@@ -15,19 +15,23 @@ export async function generateReceipt(req: Request, res: Response, next: NextFun
 
     const doc = new PDFDocument({ margin: 50 });
     
+    // Set response headers
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=receipt-${booking.bookingReference}.pdf`);
     
     doc.pipe(res);
 
+    // Header
     doc.fontSize(20).text('WallStreet Sport', { align: 'center' });
     doc.fontSize(14).text('Basketball Court Reservation', { align: 'center' });
     doc.moveDown();
     doc.fontSize(10).text('Official Receipt', { align: 'center' });
     doc.moveDown(2);
-    doc.fontSize(12).text(`Receipt #: ${booking.bookingReference}`);
-    doc.moveDown();
 
+    // Receipt Details
+    doc.font('Helvetica-Bold').fontSize(12).text(`Receipt #: ${booking.bookingReference}`);
+    doc.moveDown();
+    
     doc.fontSize(10);
     doc.text(`Customer Name: ${booking.customerName}`);
     doc.text(`Email: ${booking.email}`);
@@ -51,6 +55,7 @@ export async function generateReceipt(req: Request, res: Response, next: NextFun
     }
     doc.moveDown(2);
     
+    // Footer
     doc.fontSize(8).text('Thank you for choosing WallStreet Sport!', { align: 'center' });
     doc.text('Please show this receipt upon arrival.', { align: 'center' });
     doc.text('First to pay always gets the slot.', { align: 'center' });

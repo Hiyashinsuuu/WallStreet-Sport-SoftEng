@@ -1,4 +1,3 @@
-// src/controllers/payment.controller.ts
 import { Request, Response, NextFunction } from 'express';
 import { PaymentService } from '../services/PaymentService';
 import { BookingService } from '../services/BookingService';
@@ -14,6 +13,7 @@ export async function initiatePayment(req: Request, res: Response, next: NextFun
       return res.status(400).json({ error: 'Amount and booking details required' });
     }
 
+    // Create booking first
     const newBooking = await bookingService.createBooking({
       name: booking.name,
       email: booking.email,
@@ -22,6 +22,7 @@ export async function initiatePayment(req: Request, res: Response, next: NextFun
       timeSlot: booking.timeSlot
     });
 
+    // Initiate payment
     const paymentResult = await paymentService.initiateGcashPayment(newBooking.id, amount);
 
     res.json({

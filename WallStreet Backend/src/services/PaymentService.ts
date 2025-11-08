@@ -10,6 +10,7 @@ export class PaymentService {
   async initiateGcashPayment(bookingId: string, amount: number) {
     const providerRef = `gcash_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
+    // Create transaction record
     const tx = this.txRepo.create({
       booking: { id: bookingId } as any,
       providerReference: providerRef,
@@ -20,7 +21,13 @@ export class PaymentService {
     await this.txRepo.save(tx);
 
     try {
-      if (process.env.GCASH_API_URL && process.env.GCASH_CLIENT_ID && process.env.GCASH_CLIENT_SECRET) {
+      // Check if REAL GCash API credentials are configured
+      const hasGCashConfig = process.env.GCASH_API_URL && 
+                            process.env.GCASH_CLIENT_ID && 
+                            process.env.GCASH_CLIENT_SECRET;
+
+      if (hasGCashConfig) {
+        // PRODUCTION: Real GCash integration
         const payload = {
           amount,
           reference: providerRef,
@@ -28,6 +35,7 @@ export class PaymentService {
           return_url: `${process.env.FRONTEND_URL}/payment-complete?tx=${tx.id}`
         };
 
+        // Get OAuth token
         const tokenResp = await axios.post(`${process.env.GCASH_API_URL}/oauth/token`, {
           client_id: process.env.GCASH_CLIENT_ID,
           client_secret: process.env.GCASH_CLIENT_SECRET,
@@ -35,6 +43,7 @@ export class PaymentService {
         });
         const accessToken = tokenResp.data.access_token;
 
+        // Create checkout
         const resp = await axios.post(
           `${process.env.GCASH_API_URL}/payments/checkout`,
           payload,
@@ -48,16 +57,36 @@ export class PaymentService {
         
         return { transactionId: tx.id, checkoutUrl };
       } else {
-        const checkoutUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/mock-checkout?tx=${tx.id}&ref=${providerRef}`;
-        tx.checkoutUrl = checkoutUrl;
+        // DEVELOPMENT: Mock checkout (no real GCash API)
+        console.log('⚠️  GCash API not configured - using mock checkout');
+        
+        const mockCheckoutUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/mock-checkout?tx=${tx.id}&ref=${providerRef}&amount=${amount}`;
+        
+        tx.checkoutUrl = mockCheckoutUrl;
+        tx.gcashTransactionId = `MOCK_${providerRef}`;
         await this.txRepo.save(tx);
         
-        return { transactionId: tx.id, checkoutUrl };
+        // Auto-confirm for development (simulate successful payment)
+        setTimeout(async () => {
+          tx.status = 'success';
+          tx.paymentDate = new Date();
+          await this.txRepo.save(tx);
+          
+          // Confirm booking
+          if (tx.booking?.id) {
+            await this.bookingService.confirmBooking(tx.booking.id);
+          }
+          console.log('✅ Mock payment auto-confirmed for development');
+        }, 2000); // Auto-confirm after 2 seconds
+        
+        return { transactionId: tx.id, checkoutUrl: mockCheckoutUrl };
       }
     } catch (err: any) {
+      console.error('Payment initiation error:', err.message);
+      // Mark transaction as failed
       tx.status = 'failed';
       await this.txRepo.save(tx);
-      throw { status: 500, message: err.message || 'Payment initiation failed' };
+      throw { status: 500, message: 'Payment initiation failed. Please try again.' };
     }
   }
 
@@ -81,6 +110,7 @@ export class PaymentService {
       tx.paymentDate = new Date();
       await this.txRepo.save(tx);
 
+      // Confirm the booking
       if (tx.booking?.id) {
         await this.bookingService.confirmBooking(tx.booking.id);
       }
@@ -92,6 +122,7 @@ export class PaymentService {
     return tx;
   }
 
+  // Get payment/transaction details
   async getTransactionById(id: string) {
     const tx = await this.txRepo.findOne({
       where: { id },

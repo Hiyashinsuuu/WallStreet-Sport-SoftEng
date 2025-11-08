@@ -22,6 +22,7 @@ export async function createBooking(req: Request, res: Response, next: NextFunct
   try {
     const { name, email, contact, date, timeSlot } = req.body;
 
+    // Validation
     if (!name || !email || !contact || !date || !timeSlot) {
       return res.status(400).json({ error: 'All fields required' });
     }
@@ -44,18 +45,23 @@ export async function getAllBookings(req: Request, res: Response, next: NextFunc
   try {
     const bookings = await bookingService.getAllBookings();
     
+    // Format for frontend
     const formatted = bookings.map(b => ({
       id: b.id,
       customerName: b.customerName,
       email: b.email,
       phone: b.phone,
-      date: b.bookingDate.toISOString().split('T')[0],
+      date: b.bookingDate instanceof Date 
+        ? b.bookingDate.toISOString().split('T')[0]
+        : String(b.bookingDate),
       time: b.displayTime,
       duration: '1 hour',
       paymentMethod: b.transactions?.[0]?.paymentMethod || 'GCash',
       totalAmount: Number(b.rate),
       status: b.status,
-      createdAt: b.createdAt.toISOString()
+      createdAt: b.createdAt instanceof Date 
+        ? b.createdAt.toISOString()
+        : String(b.createdAt)
     }));
 
     res.json(formatted);
