@@ -37,13 +37,27 @@ export function BookingSection() {
   const [paymentAmount, setPaymentAmount] = useState(0);
 
   // TanStack Query Hooks
-  const dateStr = selectedDate?.toISOString().split('T')[0];
+  // Fix: Convert date to local string format before passing to API
+  const dateStr = selectedDate ? (() => {
+    const year = selectedDate.getFullYear();
+    const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+    const day = String(selectedDate.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  })() : undefined;
+  
   const { data: timeSlots = [], isLoading: loadingSlots, error: slotsError } = useAvailableSlots(dateStr);
   const initiatePayment = useInitiatePayment();
 
   const handleDateSelect = (date: Date | undefined) => {
     setSelectedDate(date);
     setBookingForm(prev => ({ ...prev, date, timeSlot: null }));
+    
+    if (date) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const dateString = `${year}-${month}-${day}`;
+    }
   };
 
   const handleTimeSlotSelect = (slot: TimeSlot) => {
@@ -63,6 +77,14 @@ export function BookingSection() {
     const amount = bookingForm.timeSlot?.rate || 0;
     setPaymentAmount(amount);
 
+    // Fix: Use local date formatting instead of toISOString()
+    const selectedDate = bookingForm.date!;
+    const year = selectedDate.getFullYear();
+    const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+    const day = String(selectedDate.getDate()).padStart(2, '0');
+    const dateString = `${year}-${month}-${day}`;
+    
+
     try {
       const result = await initiatePayment.mutateAsync({
         amount,
@@ -70,7 +92,7 @@ export function BookingSection() {
           name: bookingForm.name,
           email: bookingForm.email,
           contact: bookingForm.contact,
-          date: bookingForm.date!.toISOString().split('T')[0],
+          date: dateString,
           timeSlot: {
             time: bookingForm.timeSlot!.time,
             displayTime: bookingForm.timeSlot!.displayTime,

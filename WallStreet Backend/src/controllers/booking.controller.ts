@@ -46,29 +46,41 @@ export async function getAllBookings(req: Request, res: Response, next: NextFunc
     const bookings = await bookingService.getAllBookings();
     
     // Format for frontend
-    const formatted = bookings.map(b => ({
-      id: b.id,
-      customerName: b.customerName,
-      email: b.email,
-      phone: b.phone,
-      date: b.bookingDate instanceof Date 
-        ? b.bookingDate.toISOString().split('T')[0]
-        : String(b.bookingDate),
-      time: b.displayTime,
-      duration: '1 hour',
-      paymentMethod: b.transactions?.[0]?.paymentMethod || 'GCash',
-      totalAmount: Number(b.rate),
-      status: b.status,
-      createdAt: b.createdAt instanceof Date 
-        ? b.createdAt.toISOString()
-        : String(b.createdAt),
-      transactions: b.transactions?.map(t => ({
-        id: t.id,
-        referenceNumber: t.referenceNumber,
-        screenshotPath: t.screenshotPath,
-        status: t.status
-      }))
-    }));
+    const formatted = bookings.map(b => {
+      // PostgreSQL date type can return as string or Date
+      let dateStr: string;
+      const bookingDate = b.bookingDate as any;
+      
+      if (typeof bookingDate === 'string') {
+        dateStr = bookingDate.split('T')[0];
+      } else if (bookingDate instanceof Date) {
+        dateStr = bookingDate.toISOString().split('T')[0];
+      } else {
+        dateStr = String(bookingDate).split('T')[0];
+      }
+
+      return {
+        id: b.id,
+        customerName: b.customerName,
+        email: b.email,
+        phone: b.phone,
+        date: dateStr,
+        time: b.displayTime,
+        duration: '1 hour',
+        paymentMethod: b.transactions?.[0]?.paymentMethod || 'GCash',
+        totalAmount: Number(b.rate),
+        status: b.status,
+        createdAt: b.createdAt instanceof Date 
+          ? b.createdAt.toISOString()
+          : String(b.createdAt),
+        transactions: b.transactions?.map(t => ({
+          id: t.id,
+          referenceNumber: t.referenceNumber,
+          screenshotPath: t.screenshotPath,
+          status: t.status
+        }))
+      };
+    });
 
     res.json(formatted);
   } catch (err) {

@@ -36,7 +36,12 @@ export class EmailService {
   }
 
   private generateConfirmationEmail(booking: Booking): string {
-    const formattedDate = new Date(booking.bookingDate).toLocaleDateString('en-US', {
+    // bookingDate is now a string '2025-11-22'
+    const bookingDateStr = String(booking.bookingDate);
+    const [year, month, day] = bookingDateStr.split('-').map(Number);
+    const dateForFormatting = new Date(year, month - 1, day);
+
+    const formattedDate = dateForFormatting.toLocaleDateString('en-US', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -72,8 +77,15 @@ export class EmailService {
       color: white;
     }
     .logo {
-      max-width: 150px;
-      margin-bottom: 10px;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .logo img {
+      max-width: 800px;
+      height: auto;
+    }
+    p {
+      margin: 10px 0;
     }
     .content {
       padding: 30px;
@@ -122,9 +134,8 @@ export class EmailService {
 </head>
 <body>
   <div class="email-container">
-    <div class="header">
-      <h1 style="margin: 0; font-size: 28px;">🏀 WallStreet Sport</h1>
-      <p class="tagline">Play More, Worry Less!</p>
+    <div class="logo">
+      <img src="https://i.imgur.com/nAbwdb0.png" alt="WallStreet Sport Logo">
     </div>
     
     <div class="content">
@@ -190,10 +201,8 @@ export class EmailService {
   async testConnection() {
     try {
       await this.transporter.verify();
-      console.log('✅ Email service is ready');
       return true;
     } catch (error: any) {
-      console.error('❌ Email service error:', error.message);
       return false;
     }
   }

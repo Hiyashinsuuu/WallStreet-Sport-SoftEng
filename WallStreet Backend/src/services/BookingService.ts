@@ -27,16 +27,17 @@ export class BookingService {
 
   // Get available slots for a specific date
   async getAvailableSlots(date: string) {
+    
     const allSlots = await this.timeSlotRepo.find({ where: { isActive: true } });
     
-    // Get booked slots for this date
-    const bookedSlots = await this.bookingRepo.find({
-      where: { 
-        bookingDate: new Date(date),
-        status: 'confirmed'  // Only confirmed bookings block slots
-      },
-      select: ['timeSlot']
-    });
+    // Get booked slots for this date - now using string comparison
+    const bookedSlots = await this.bookingRepo
+      .createQueryBuilder('booking')
+      .where('booking.bookingDate = :date', { date })
+      .andWhere('booking.status = :status', { status: 'confirmed' })
+      .getMany();
+
+  
 
     const bookedTimeSlots = new Set(bookedSlots.map(b => b.timeSlot));
 
@@ -52,26 +53,26 @@ export class BookingService {
 
   // Create new booking (pending status)
   async createBooking(data: CreateBookingDTO) {
-    // Check if slot is already booked
-    const existing = await this.bookingRepo.findOne({
-      where: {
-        bookingDate: new Date(data.date + 'T00:00:00'),  // Force local midnight
-        timeSlot: data.timeSlot.time,
-        status: 'confirmed'
-      }
-    });
+    
+    // Check if slot is already booked - string comparison
+    const existing = await this.bookingRepo
+      .createQueryBuilder('booking')
+      .where('booking.bookingDate = :date', { date: data.date })
+      .andWhere('booking.timeSlot = :timeSlot', { timeSlot: data.timeSlot.time })
+      .andWhere('booking.status = :status', { status: 'confirmed' })
+      .getOne();
 
     if (existing) {
       throw { status: 409, message: 'This time slot is already booked' };
     }
 
-    // Create booking
+    // Create booking - store date as string '2024-11-22'
     const booking = this.bookingRepo.create({
       bookingReference: this.generateBookingReference(),
       customerName: data.name,
       email: data.email,
       phone: data.contact,
-      bookingDate: new Date(data.date + 'T00:00:00'),  // Force local midnight
+      bookingDate: data.date,  // Store as string directly
       timeSlot: data.timeSlot.time,
       displayTime: data.timeSlot.displayTime,
       rate: data.timeSlot.rate,
@@ -79,7 +80,9 @@ export class BookingService {
       status: 'pending'
     });
 
-    return await this.bookingRepo.save(booking);
+    const savedBooking = await this.bookingRepo.save(booking);
+    
+    return savedBooking;
   }
 
   // Confirm booking after successful payment
@@ -147,13 +150,12 @@ export class BookingService {
   // Get booking stats (admin dashboard)
   async getBookingStats() {
     const allBookings = await this.bookingRepo.find();
-    const today = new Date().toISOString().split('T')[0];
+    const today = new Date().toISOString().split('T')[0]; // '2024-11-22'
     
+    // Now bookingDate is a string, so direct comparison works
     const todayBookings = allBookings.filter(b => {
-      const bookingDate = b.bookingDate instanceof Date 
-        ? b.bookingDate.toISOString().split('T')[0]
-        : String(b.bookingDate).split('T')[0];
-      return bookingDate === today;
+      const bookingDateStr = String(b.bookingDate); // Cast to string to satisfy TypeScript
+      return bookingDateStr === today;
     });
     
     const confirmedBookings = allBookings.filter(b => b.status === 'confirmed');

@@ -383,18 +383,6 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
                 </div>
               </div>
 
-              {/* Screenshot */}
-              {selectedBooking.transactions?.[0]?.screenshotPath && (
-                <div className="bg-gray-800/50 p-4 rounded-lg">
-                  <h3 className="text-white font-bold mb-2">Payment Screenshot</h3>
-                  <img
-                    src={`${API_URL}/${selectedBooking.transactions[0].screenshotPath}`}
-                    alt="Payment receipt"
-                    className="w-full max-h-96 object-contain bg-gray-900 rounded"
-                  />
-                </div>
-              )}
-
               {/* Actions */}
               <div className="flex gap-3">
                 <Button
@@ -412,7 +400,7 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
                       disabled={downloadReceipt.isPending}
                     >
                       <Download className="w-4 h-4 mr-2" />
-                      Download
+                      Download Receipt
                     </Button>
                     {selectedBooking.status === 'confirmed' && (
                       <Button
